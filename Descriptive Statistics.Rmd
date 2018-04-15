@@ -1,0 +1,576 @@
+---
+title: "Descriptive Statistics"
+author: "Sixuan Wu"
+date: "2018/3/5"
+output:
+  html_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+#Package
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(forecast)
+library(demography)
+library(MortalitySmooth)
+setwd('/Users/cherish/Desktop/2018SOA/')
+```
+
+
+#Data Preparation
+```{r}
+ind <- read.table('ind.csv', header = T, sep = ',')
+
+# remove record with missing Age value
+ind$Earnings[which(is.na(ind$Earnings[1:20000]))] <- 0
+ind <- ind[!is.na(ind$Age),]
+rownames(ind) <- 1:nrow(ind)
+
+write.csv(ind, file="nonemp_Gender_no_Change.csv")
+
+# coerce gender to F and M
+ind$Gender <- ifelse(ind$Gender == 1, 'F', 'M')
+
+# replace care level NA by 0
+ind$Care.Level[is.na(ind$Care.Level)] <- 0
+
+write.csv(ind, file="nonemp_ind.csv")
+
+# coerce variables to factors
+cols <- c('Gender', 'Health', 'Care.Level', 'child')
+ind[cols] <- lapply(ind[cols], factor)
+```
+
+#Population Pyramid
+```{r}
+# pyramid function
+pyramid <- function(df, age_col, gender_col) {
+  population <- df[,c(age_col, gender_col)]
+  names(population) <- c('age', 'gender')
+  # group ages
+  population$age[population$age > 100] <- 100
+  population$group <- cut(population$age, breaks = seq(0,120,by=5), right = F)
+  # remove extra characters
+  population$group <- gsub("\\[", "", population$group)
+  #population$group <- gsub("\\)", "", population$group)
+  population$group <- gsub(",", "-", population$group)
+  population$group <- gsub("-5)", "-4", population$group)  
+  population$group <- gsub("-10)", "-9", population$group) 
+  population$group <- gsub("-15)", "-14", population$group)
+  population$group <- gsub("-20)", "-19", population$group)
+  population$group <- gsub("-25)", "-24", population$group)
+  population$group <- gsub("-30)", "-29", population$group)
+  population$group <- gsub("-35)", "-34", population$group) 
+  population$group <- gsub("-40)", "-39", population$group)
+  population$group <- gsub("-45)", "-44", population$group)
+  population$group <- gsub("-50)", "-49", population$group)
+  population$group <- gsub("-55)", "-54", population$group)
+  population$group <- gsub("-60)", "-59", population$group)
+  population$group <- gsub("-65)", "-64", population$group)
+  population$group <- gsub("-70)", "-69", population$group)
+  population$group <- gsub("-75)", "-74", population$group) 
+  population$group <- gsub("-80)", "-79", population$group)
+  population$group <- gsub("-85)", "-84", population$group) 
+  population$group <- gsub("-90)", "-89", population$group)
+  population$group <- gsub("-95)", "-94", population$group) 
+  population$group <- gsub("-100)", "-99", population$group)
+  population$group[population$age>=100] = '100+'
+  population$group <- ordered(population$group, levels=c('0-4','5-9','10-14','15-19','20-24','25-29','30-34','35-39','40-44','45-49','50-54','55-59','60-64','65-69','70-74','75-79','80-84','85-89','90-94','95-99','100+'))
+  
+  # plot populaion pyramid
+  # 20797 is the total population
+  ggplot(data=population,aes(x=group,fill=gender)) + 
+    geom_bar(data=subset(population,gender=="F"),aes(y=..count../20797)) +
+    geom_bar(data=subset(population,gender=="M"),aes(y=..count..*(-1)/20797)) +
+    scale_y_continuous(breaks=seq(-0.10,0.10,0.025),labels=percent(c(0.10,0.075,0.05,0.025,0,0.025,0.05,0.075,0.10)) )+ 
+    ggtitle('Population Pyramid') +
+    xlab('age group') + ylab('population') +
+    coord_flip() +
+    scale_fill_brewer(palette='Set1') +
+    theme_bw() +
+    theme(plot.title = element_text(hjust = 0.5))
+}
+
+# population pyramid
+nonemp_ind <- read.table('nonemp_ind.csv', header = T, sep = ',')
+pyramid(nonemp_ind, 2, 3)
+```
+
+
+#Age Distribution for specific range
+```{r}
+pop.sample <- matrix(0, nrow=5, ncol=1)
+dimnames(pop.sample) = list(c("Age>80", "Age>=65", "Age<65", "20<=Age<=40", "Age<20"), c("Number"))
+
+pop.sample[,1] <- c(sum(ind$Age>80), sum(ind$Age>=65), sum(ind$Age<65), sum(ind$Age<=40 & ind$Age>=20), sum(ind$Age<20))
+
+pop.sample <- as.data.frame(pop.sample)
+pop.sample$Percentage <- c(sum(ind$Age>80)/nrow(ind), sum(ind$Age>=65)/nrow(ind), sum(ind$Age<65)/nrow(ind), sum(ind$Age<=40 & ind$Age>=20)/nrow(ind), sum(ind$Age<20)/nrow(ind))
+
+ggplot(pop.sample, aes(x = row.names(pop.sample), y = Percentage)) + geom_bar(stat = "identity") + geom_text(aes(label=scales::percent(Percentage)), vjust = -.5) + xlab("Age Group")
+
+```
+
+#Health vs. Care.Level
+```{r}
+#Total Health Level Percentage
+ind_Health <- ind[!is.na(ind$Health),]
+ind_Health %>% 
+  count(Health) %>% 
+  mutate(perc = n / nrow(ind_Health)) -> tips2
+ggplot(tips2, aes(x = Health, y = perc)) + geom_bar(stat = "identity") + geom_text(aes(label=scales::percent(perc)), vjust = -.5) + xlab("Health level for whole population without NA Health")
+
+#Distribution of Care Level given Health = 1 
+#1:Receiving Home Health Care through Social LTC Program
+CL_H1 <- as.data.frame(table(ind$Care.Level[ind$Health==1]) / sum(table(ind$Care.Level[ind$Health==1])[1:5]))
+colnames(CL_H1) <- c("Level", "Percentage")
+ggplot(CL_H1, aes(x = Level, y = Percentage)) + geom_bar(stat = "identity") + geom_text(aes(label=scales::percent(Percentage)), vjust = -.5) + xlab("Care.Level given Health=1")
+
+#Distribution of Care Level within Health = 2 
+#2:Receiving Facility Health Care through Social LTC Program
+CL_H2 <- as.data.frame(table(ind$Care.Level[ind$Health==2]) / sum(table(ind$Care.Level[ind$Health==1])[1:5]))
+colnames(CL_H2) <- c("Level", "Percentage")
+ggplot(CL_H2, aes(x = Level, y = Percentage)) + geom_bar(stat = "identity") + geom_text(aes(label=scales::percent(Percentage)), vjust = -.5) + xlab("Care.Level given Health=2")
+```
+
+#Age vs. Care.level
+```{r}
+ggplot(ind[ind$Age>=65,], aes(x=Care.Level, y=Age)) + 
+  geom_boxplot(alpha=0.5, fill='blue') +
+  labs(title='Age vs. Care Level for Age >= 65',
+       xlab='Care Level') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+##Count by Gender given Health=1
+```{r}
+ggplot(ind[ind$Age>=65&ind$Health==1,], aes(x=Care.Level, y=Age, fill=Gender)) + 
+  geom_boxplot(alpha=0.5) +
+  labs(title='Age vs. Care Level for Age >= 65', subtitle="By Gender",
+       xlab='Care Level') +
+  theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
+
+ggplot(ind[ind$Age>=65&ind$Health==1,]) + 
+  geom_bar(aes(x=Care.Level, fill=Gender), alpha=0.5,stat="count", position="dodge") +
+  labs(title='Age vs. Care Level (count)', subtitle="By Gender",
+       xlab='Care Level') +
+  theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
+```
+
+##Count by Gender given Health=2
+```{r}
+ggplot(ind[ind$Age>=65&ind$Health==2,], aes(x=Care.Level, y=Age, fill=Gender)) + 
+  geom_boxplot(alpha=0.5) +
+  labs(title='Age vs. Care Level (count)', subtitle="By Gender",
+       xlab='Care Level') +
+  theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
+
+ggplot(ind[ind$Age>=65&ind$Health==2,]) + 
+  geom_bar(aes(x=Care.Level, fill=Gender), alpha=0.5,stat="count", position="dodge") +
+  labs(title='Age vs. Care Level (count)', subtitle="By Gender",
+       xlab='Care Level') +
+  theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5))
+```
+
+#Age vs. Health
+```{r}
+ggplot(ind[ind$Age>=65,], aes(x=Health, y=Age)) + 
+  geom_boxplot(alpha=0.5, fill='blue') +
+  labs(title='Age vs. Health') +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5))
+
+ggplot(ind[ind$Age>=65,], aes(x=Health, y=Age, fill=Gender)) + 
+  geom_boxplot(alpha=0.5) +
+  labs(title='Age vs. Health',
+       subtitle='by Gender') +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+#Income
+##Income distribution for whole population without NA
+```{r}
+Income <- subset(ind, !is.na(ind$Earnings))
+ggplot(Income, aes(Earnings)) + 
+  geom_histogram(alpha=0.5, bins=100, color='black')  +
+  labs(title='Histogram for Income', xlab='Income') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#Not much difference between female income and male income
+ggplot(Income, aes(Earnings, fill=Gender)) + 
+  stat_density(adjust=1/2, size=0.5, alpha=0.6, position='identity') +
+  labs(title='Density for Income by Gender', xlab='Income') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+##Income vs. Age trend
+```{r}
+# Age < 65
+ggplot(Income[Income$Age<65,], aes(x=Age, y=Earnings)) +
+  geom_point(alpha=0.5, color='grey') +
+  stat_smooth(method=lm, size=1, alpha= 0.7) +
+  labs(title='Income vs. Age',
+       subtitle='for younger than 65 years',
+       y='Income') +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5))
+
+# Age >= 65
+ggplot(Income[Income$Age>=65,], aes(x=Age, y=Earnings)) +
+  geom_point(alpha=0.5, color='grey') +
+  geom_smooth(method=lm, size=1, alpha= 0.7) +
+  labs(title='Income vs. Age',
+       subtitle='for 65 years or older',
+       y='Income') +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+##Income vs Health by Gender
+```{r}
+ggplot(Income, aes(x=Health, y=Earnings, fill=Gender)) +
+  geom_boxplot() +
+  labs(title='Income vs. Health',
+       subtitle='by Gender',
+       y='Income') +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5))
+```
+
+##Income vs. Care.level
+```{r}
+ggplot(Income, aes(x=Care.Level, y=Earnings)) +
+  geom_boxplot(alpha=0.5) +
+  labs(title='Income vs. Care.level',
+       y='Income',
+       x='Care Level') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(Income[Income$Health==1,], aes(x=Care.Level, y=Earnings,fill=Gender)) +
+  geom_boxplot(alpha=0.5) +
+  labs(title='Income vs. Care.level given Health=1',
+       y='Income',
+       x='Care Level') +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(Income[Income$Health==2,], aes(x=Care.Level, y=Earnings,fill=Gender)) +
+  geom_boxplot(alpha=0.5) +
+  labs(title='Income vs. Care.level given Health=2',
+       y='Income',
+       x='Care Level') +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+#Prediction Function
+```{r}
+#Construct the function to do the predict 2018-2028
+all_predict <- function(orig_df) {
+  pred_result <- matrix(NA, nrow=length(orig_df), ncol=11)
+  pred_result[nrow(pred_result),] <- c(2018:2028)
+  for(ii in 1:(length(orig_df)-1)) {
+    result_model <- lm(orig_df[[ii]] ~ time, orig_df)
+    pred_result[ii,] <- predict.lm(result_model, data.frame(time=c(2018:2028)))
+  }
+  pred_result <- as.data.frame(t(pred_result))
+  pred_result[,ncol(pred_result)] <- as.integer(pred_result[,ncol(pred_result)])
+  colnames(pred_result) <- colnames(orig_df)
+  return(pred_result)
+}
+```
+
+#ggplot Regression
+```{r}
+ggplotRegression <- function (fit, Type, int) {
+
+require(ggplot2)
+
+ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "blue") +
+  labs(title = paste(Type, int, "vs. Year"),
+       subtitle = paste("Adj R^2 = ",signif(summary(fit)$adj.r.squared, 5),
+                     "Intercept =",signif(fit$coef[[1]],5 ),
+                     " Slope =",signif(fit$coef[[2]], 5),
+                     " p-value =",signif(summary(fit)$coef[2,4], 5)),
+       y=paste(Type, int)) +
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5))
+}
+
+```
+
+#Multiple plot
+```{r}
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+
+##Prediction of Income within Home care payout
+```{r}
+#Read data
+train_payout <- matrix(NA, nrow=4, ncol=5, 
+                       dimnames = list(c("Home_CL_1", "Home_CL_2", "Home_CL_3",
+                      "Home_CL_4")))
+train_payout[1,] <- c(179.18,189.41,200.23,212.99,221.87)
+train_payout[2,] <- c(334.18,354.38,372.72,392.11,413.62)
+train_payout[3,] <- c(491.48,520.93,547.65,576.12,607.71)
+train_payout[4,] <- c(729.26,773.24,813.47,855.53,902.46)
+
+train_payout <- as.data.frame(t(train_payout))
+train_payout$time <- c(2013,2014,2015,2016,2017)
+
+#Model Graphs
+cl1 <- ggplotRegression(lm(Home_CL_1 ~ time, data=train_payout), "Home Care Payout at Level", 1)
+cl2 <- ggplotRegression(lm(Home_CL_2 ~ time, data=train_payout), "Home Care Payout at Level", 2)
+cl3 <- ggplotRegression(lm(Home_CL_3 ~ time, data=train_payout), "Home Care Payout at Level", 3)
+cl4 <- ggplotRegression(lm(Home_CL_4 ~ time, data=train_payout), "Home Care Payout at Level", 4)
+
+multiplot(cl1, cl2, cl3, cl4, cols=2)
+# 
+# ggplot(us_summary_Ind, aes(x=Year, y=Index)) + geom_point() + geom_smooth(method = 'lm', se=T)
+
+#Original plot without predicting 
+ggplot(train_payout)+geom_line(aes(x=time, y=Home_CL_1, color="Home care at level 1"))+
+  geom_point(aes(x=time, y=Home_CL_1, color="Home care at level 1"))+
+  geom_line(aes(x=time, y=Home_CL_2, color="Home care at level 2"))+
+  geom_point(aes(x=time, y=Home_CL_2, color="Home care at level 2"))+
+  geom_line(aes(x=time, y=Home_CL_3, color="Home care at level 3"))+
+  geom_point(aes(x=time, y=Home_CL_3, color="Home care at level 3"))+
+  geom_line(aes(x=time, y=Home_CL_4, color="Home care at level 4")) + 
+  geom_point(aes(x=time, y=Home_CL_4, color="Home care at level 4")) + 
+  ylab("Home Care Monthly Payout")
+  
+#Combine the predicted data with original data
+total_h_payout <- rbind(train_payout, all_predict(train_payout))
+write.csv(total_h_payout, file="Home Care Payout Prediction.csv")
+
+#Plot the whole data
+ggplot(total_h_payout)+geom_line(aes(x=time, y=Home_CL_1, color="Home care at level 1"))+
+  geom_point(aes(x=time, y=Home_CL_1, color="Home care at level 1"))+
+  geom_line(aes(x=time, y=Home_CL_2, color="Home care at level 2"))+
+  geom_point(aes(x=time, y=Home_CL_2, color="Home care at level 2"))+
+  geom_line(aes(x=time, y=Home_CL_3, color="Home care at level 3"))+
+  geom_point(aes(x=time, y=Home_CL_3, color="Home care at level 3"))+
+  geom_line(aes(x=time, y=Home_CL_4, color="Home care at level 4"))+ 
+  geom_point(aes(x=time, y=Home_CL_4, color="Home care at level 4"))+ 
+  ylab("Home Care Monthly Payout with Prediction")+ scale_x_continuous(breaks=seq(2013,2028,2))+ 
+  scale_y_continuous(breaks=seq(150,3000,200))
+```
+
+##Prediction of Income within Facility care
+```{r}
+#Read data
+fac_payout <- matrix(NA, nrow=4, ncol=5, 
+                       dimnames = list(c("Facility_CL_1", "Facility_CL_2", "Facility_CL_3",
+                      "Facility_CL_4")))
+fac_payout[1,] <- c(813.59,861.81,906.26,953.85,1006.15)
+fac_payout[2,] <- c(971.29,1029.75,1083.23,1139.41,1201.91)
+fac_payout[3,] <- c(1129.28,1197.26,1260.34,1325.98,1398.72)
+fac_payout[4,] <- c(1315.51,1393.63,1465.71,1542.04,1626.63)
+
+fac_payout <- as.data.frame(t(fac_payout))
+fac_payout$time <- c(2013,2014,2015,2016,2017)
+
+cl1 <- ggplotRegression(lm(Facility_CL_1 ~ time, data=fac_payout), "Facility Care Payout at Level", 1)
+cl2 <- ggplotRegression(lm(Facility_CL_2 ~ time, data=fac_payout), "Facility Care Payout at Level", 2)
+cl3 <- ggplotRegression(lm(Facility_CL_3 ~ time, data=fac_payout), "Facility Care Payout at Level", 3)
+cl4 <- ggplotRegression(lm(Facility_CL_4 ~ time, data=fac_payout), "Facility Care Payout at Level", 4)
+
+multiplot(cl1, cl2, cl3, cl4, cols=2)
+
+#Original plot without predicting 
+ggplot(fac_payout)+geom_line(aes(x=time, y=Facility_CL_1, color="Facility care at level 1"))+ geom_point(aes(x=time, y=Facility_CL_1, color="Facility care at level 1"))+
+  geom_line(aes(x=time, y=Facility_CL_2, color="Facility care at level 2"))+geom_point(aes(x=time, y=Facility_CL_2, color="Facility care at level 2"))+
+  geom_line(aes(x=time, y=Facility_CL_3, color="Facility care at level 3"))+geom_point(aes(x=time, y=Facility_CL_3, color="Facility care at level 3"))+
+  geom_line(aes(x=time, y=Facility_CL_4, color="Facility care at level 4")) +geom_point(aes(x=time, y=Facility_CL_4, color="Facility care at level 4")) + 
+  ylab("Facility Care Monthly Payout")
+
+#Do the prediction
+total_f_payout <- rbind(fac_payout, all_predict(fac_payout))
+write.csv(total_f_payout, file="Facility Care Payout Prediction.csv")
+
+#Plot the whole data
+ggplot(total_f_payout)+geom_line(aes(x=time, y=Facility_CL_1, color="Facility care at level 1"))+geom_point(aes(x=time, y=Facility_CL_1, color="Facility care at level 1"))+
+  geom_line(aes(x=time, y=Facility_CL_2, color="Facility care at level 2"))+geom_point(aes(x=time, y=Facility_CL_2, color="Facility care at level 2"))+
+  geom_line(aes(x=time, y=Facility_CL_3, color="Facility care at level 3"))+geom_point(aes(x=time, y=Facility_CL_3, color="Facility care at level 3"))+
+  geom_line(aes(x=time, y=Facility_CL_4, color="Facility care at level 4"))+geom_point(aes(x=time, y=Facility_CL_4, color="Facility care at level 4"))+ 
+  ylab("Facility Monthly Payout with Prediction")+ scale_x_continuous(breaks=seq(2013,2028,2))+ scale_y_continuous(breaks=seq(800,3000,200))
+
+```
+
+##Prediction of Unemployment Rate
+```{r}
+#Read data
+unemp_rate <- matrix(c(0.033, 0.036,0.038,0.041,0.044), nrow=1, ncol=5,dimnames = list(c("Unemp")))
+
+unemp_rate <- as.data.frame(t(unemp_rate))
+unemp_rate$time <- c(2013,2014,2015,2016,2017)
+
+#Plot original data
+p1 <- ggplot(unemp_rate, aes(x=time, y=Unemp))+geom_point()+geom_line()+ylab("Historical Unemployment Rate")
+
+p2 <- ggplotRegression(lm(Unemp ~ time, unemp_rate), "Unemployment Rate", int=NULL)
+
+#Do prediction
+total_unemp <- rbind(unemp_rate, all_predict(unemp_rate))
+write.csv(total_unemp, file="Unemployment Rate Prediction.csv")
+
+p3 <- ggplot(total_unemp, aes(x=time, y=Unemp))+geom_line()+geom_point(aes(x=time, y=Unemp, color=time>=2018))+geom_text(aes(label=ifelse(time>2017, round(Unemp,3), "")),hjust=0.5, vjust=2)+ylab("Unemployment Rate with Prediction")+scale_x_continuous(breaks=seq(2013,2028,2))+theme(legend.position="none")
+
+multiplot(p1,p2,p3, cols=3)
+
+```
+
+#Earning Index Prediction (divide the first year earning)
+##US 
+```{r}
+us_summary <- read.table('/Users/cherish/Desktop/2018SOA/US_summary.csv', sep=',', header=T)
+eu_summary <- read.table('/Users/cherish/Desktop/2018SOA/EURO_summary.csv', sep=',', header=T)
+
+us_Ind <- lm(Index~Year,us_summary[us_summary$Year!=2000,])
+us_band_Ind <- predict(us_Ind, interval="prediction")
+us_pred_Ind <- data.frame(Year=2017:2028, Index=predict.lm(us_Ind, data.frame(Year=c(2017:2028))))
+us_summary_Ind <- cbind(us_summary[us_summary$Year!=2000,], us_band_Ind)
+
+#US original graph
+ggplot(us_summary_Ind, aes(x=Year, y=Index)) + geom_point()+geom_line()
+
+#US Model Graph
+ggplot(us_summary_Ind, aes(x=Year, y=Index)) + geom_point() + geom_smooth(method = 'lm', se=T) + geom_line(aes(y=lwr), color = "red", linetype = "dashed")+geom_line(aes(y=upr), color = "red", linetype = "dashed")+scale_x_continuous(breaks=seq(2001,2016,2))
+
+#US Prediction Graph
+new_us_Ind <- rbind(us_summary_Ind[c("Year", "Index")], us_pred_Ind)
+ggplot(new_us_Ind, aes(x=Year, y=Index, color=Year>2016))+geom_point()+geom_line()+scale_x_continuous(breaks=seq(2001,2028,2))
+
+#New file
+write.csv(new_us_Ind, file = "US Earning Index Prediction.csv")
+
+```
+
+##Euro
+```{r}
+eu_Ind <- lm(Index~Year,eu_summary[eu_summary$Year!=2000,])
+eu_band_Ind <- predict(eu_Ind, interval="prediction")
+eu_pred_Ind <- data.frame(Year=2017:2028, Index=predict.lm(eu_Ind, data.frame(Year=c(2017:2028))))
+eu_summary_Ind <- cbind(eu_summary[eu_summary$Year!=2000,], eu_band_Ind)
+
+#EU original graph
+e1 <- ggplot(eu_summary_Ind, aes(x=Year, y=Index)) + geom_point()+geom_line()
+
+#EU Model Graph
+e2 <- ggplot(eu_summary_Ind, aes(x=Year, y=Index)) + geom_point() + geom_smooth(method = 'lm', se=T) + geom_line(aes(y=lwr), color = "red", linetype = "dashed")+geom_line(aes(y=upr), color = "red", linetype = "dashed")+scale_x_continuous(breaks=seq(2001,2016,2))
+
+#EU Prediction Graph
+new_eu_Ind <- rbind(eu_summary_Ind[c("Year", "Index")], eu_pred_Ind)
+
+e3 <- ggplot(new_eu_Ind, aes(x=Year, y=Index))+geom_point(aes(x=Year, y=Index,color=Year>2017))+geom_line()+scale_x_continuous(breaks=seq(2001,2028,2)) + theme(legend.position="none")
+
+#New file
+write.csv(new_eu_Ind, file = "EU Earning Index Prediction.csv")
+
+multiplot(e1,e2,e3,col=3)
+
+```
+
+##Comparison
+```{r}
+compare_df <- data.frame(Year=2001:2028, us_Index=new_us_Ind$Index, eu_Index=new_eu_Ind$Index)
+
+#New file
+write.csv(compare_df, file = "US and EU Earning Index Prediction.csv")
+
+ggplot(compare_df)+geom_point(aes(x=Year, y=us_Index,color="US"))+geom_line(aes(x=Year, y=us_Index,color="US"))+geom_point(aes(x=Year, y=eu_Index,color="EU"))+geom_line(aes(x=Year, y=eu_Index,color="EU"))+scale_x_continuous(breaks=seq(2001,2028,2))
+```
+
+#
+```{r}
+compare_df$us_value <- compare_df$us_Index * 38494
+compare_df$eu_value <- compare_df$eu_Index * 19838.53
+
+write.csv(compare_df, "compare_df.csv")
+```
+
+#Earning Rate Prediction (divide the previous year earning)
+##US
+```{r}
+##US original model
+ggplot(us_summary, aes(x=Year, y=Rate)) + geom_point() + geom_line()
+ggplot(eu_summary,aes(x=Year,y=Rate)) + geom_line()+geom_point()
+
+compare_rate <- data.frame(Year=2000:2016, us_rate=us_summary$Rate, eu_rate=eu_summary$Rate)
+
+ggplot(compare_rate) + geom_line(aes(x=Year,y=us_rate,color="US")) +geom_line(aes(x=Year, y=eu_rate, color="EU"))+ylab("Average Annual Income")+labs(title="Inflation Rate", subtitle="US vs. EU")+
+  theme(plot.title = element_text(hjust = 0.5), 
+        plot.subtitle = element_text(hjust = 0.5))
+
+sub <- us_summary["Rate"]
+sub <- (sub-1)*100
+
+#Time Series Model
+test <- ts(us_summary["Rate"], start = c(2000), end = c(2016), freq = 1)
+plot(test)
+
+acf(test, 15, main = "")
+pacf(test, 15, main = "")
+
+test_model <- arima(test, order = c(1,1,0))
+forcast_test <- forecast(test_model, h=12)
+plot(forcast_test)
+
+# test2 <- ugarchspec(variance.model = list(model="sGARCH", garchOrder=c(1,1)), mean.model = list(armaOrder=c(0,0)), distribution.model = "std")
+# testGarch <- ugarchfit(spec=test2, data=sub)
+# test2Predict <- ugarchboot(testGarch, n.ahead=12, method=c("Partial", "Full")[1])
+# plot(test2Predict,which=2)
+
+personal <- read.table("/Users/cherish/Desktop/A792RC0Q052SBEA.csv", header=T, sep=",")
+
+test1 <- ts(as.matrix(personal[["Rate"]],ncol=1),start=c(1947.1), end = c(2017.10), freq=4)
+plot(test1)
+test1_model <- auto.arima(test1)
+forcast_test <- forecast(test1_model, h=60)
+plot(forcast_test)
+
+```
+
