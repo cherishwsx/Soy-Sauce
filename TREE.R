@@ -118,6 +118,7 @@ buildSubTree <- function(myData, classes, depth = 1, featureSpace = fs) {
       subClass1 <- classes[(myData[,rulefound$feature]==rulefound$value)]
       subClass2 <- classes[!(myData[,rulefound$feature]==rulefound$value)]
     }
+    if((nrow(subData1)==nrow(myData))||(nrow(subData2)==nrow(myData))) {return(newNode(splitRule = NA, class =as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1]), childT = NA, childF = NA))}
     depth <- depth + 1
     childT <- buildSubTree(myData = subData1, classes = subClass1, depth = depth, featureSpace = featureSpace)
     childF <- buildSubTree(myData = subData2, classes = subClass2, depth = depth, featureSpace = featureSpace)
