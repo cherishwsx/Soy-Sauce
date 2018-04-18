@@ -89,23 +89,22 @@ find_node<-function(features, class) {
 
 
 
-minDataPoints <- -1
-maxDepth <- 4
+minDataPoints <- 5
+maxDepth <- 6
 
 stopOrNot <- function(myData, depth) {
-  if ((minDataPoints != -1) && (nrow(myData) < minDataPoints)) result <- T else result <- F
-  if ((maxDepth != -1) && (depth > maxDepth)) result <- T else result <- F
+  result <- F
+  if ((minDataPoints != -1) && (nrow(myData) <= minDataPoints)) result <- T
+  if ((maxDepth != -1) && (depth >= maxDepth)) result <- T
   return(result)
 }
 
-fs <- list(NA)
-
-buildSubTree <- function(myData, classes, depth = 1, featureSpace = fs) {
+buildSubTree <- function(myData, classes, depth = 1, featureSpace = list(NA)) {
   depthsu <- depth
   if (stopOrNot(myData = myData, depthsu)) {
-    return(newNode(splitRule = NA, class =as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1]), childT = NA, childF = NA))} else {
+    return(newNode(splitRule = NA, class =paste(as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1]), "(", format(mean(classes==as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1])), digits = 2), ")", sep = ""), childT = NA, childF = NA))} else {
     rulefound <- bestRule(myData = myData, classes = classes, featureSpace = featureSpace)
-    if (is.na(rulefound$feature)) {return(newNode(splitRule = NA, class =as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1]), childT = NA, childF = NA))}
+    if (is.na(rulefound$feature)) {return(newNode(splitRule = NA, class =paste(as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1]), "(", format(mean(classes==as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1])), digits = 2), ")", sep = ""), childT = NA, childF = NA))}
     featureSpace <- list.append(featureSpace, rulefound)
     if (is.numeric(myData[1,rulefound$feature])) {
       subData1 <- myData[(myData[,rulefound$feature]<=rulefound$value),]
@@ -118,7 +117,7 @@ buildSubTree <- function(myData, classes, depth = 1, featureSpace = fs) {
       subClass1 <- classes[(myData[,rulefound$feature]==rulefound$value)]
       subClass2 <- classes[!(myData[,rulefound$feature]==rulefound$value)]
     }
-    if((nrow(subData1)==nrow(myData))||(nrow(subData2)==nrow(myData))) {return(newNode(splitRule = NA, class =as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1]), childT = NA, childF = NA))}
+    if((nrow(subData1)==nrow(myData))||(nrow(subData2)==nrow(myData))) {return(newNode(splitRule = NA, class =paste(as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1]), "(", format(mean(classes==as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1])), digits = 2), ")", sep = ""), childT = NA, childF = NA))}
     depth <- depth + 1
     childT <- buildSubTree(myData = subData1, classes = subClass1, depth = depth, featureSpace = featureSpace)
     childF <- buildSubTree(myData = subData2, classes = subClass2, depth = depth, featureSpace = featureSpace)
