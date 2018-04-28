@@ -104,7 +104,7 @@ buildSubTree <- function(myData, classes, depth = 1, featureSpace = list(NA)) {
   depthsu <- depth
   if (stopOrNot(myData = myData, depthsu)) {
     return(newNode(splitRule = NA, class =paste(as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1])), childT = NA, childF = NA))} else {
-      rulefound <- bestRule(myData = myData, classes = classes, featureSpace = featureSpace)
+      rulefound <- bestRule(myData = myData[,sample(1:length(myData),round(sqrt(length(myData))))], classes = classes, featureSpace = featureSpace)
       if (is.na(rulefound$feature)) {return(newNode(splitRule = NA, class =paste(as.character(as.data.frame(sort(table(classes), decreasing = T))[1,1])), childT = NA, childF = NA))}
       featureSpace <- list.append(featureSpace, rulefound)
       if (is.numeric(myData[1,rulefound$feature])) {
