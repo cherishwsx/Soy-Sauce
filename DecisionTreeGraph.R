@@ -2,6 +2,7 @@ library(igraph)
 library(rlist)
 library(stringr)
 
+
 child1 <- list(splitRule='x<-0.094',class=NA,
                childT=list(splitRule=NA,class=1,childT=NA,childF=NA),
                childF=list(splitRule=NA,class=2,childT=NA,childF=NA))
@@ -66,12 +67,15 @@ for(i in 1:(length(hf)-1))
 
 g <- graph.empty (length(hf), directed = T) #creating empty plot
 g<-add.edges(g, edges) #add edges
-V(g)$name<-r_node
+V(g)$name <- r_node
+tmp_v <- sapply(V(g)$name,nchar)
+names(tmp_v) <- NULL
+V(g)$size <- (tmp_v*1.5+1)
 #Plotting
-par(mar = c(0,0,0,0), ps=14,cex=0.6 )
+par(mar = c(0,0,0,0), ps=12,cex=0.6 )
 V(g)$color="white"
 plot(g, layout = layout.reingold.tilford(g, root = 1, flip.y = T, circular = F),
-     vertex.size=10, vertex.shape="circle", arrow.size=0.5)
+     vertex.size=V(g)$size, vertex.shape="rectangle",edge.arrow.width=0.6)
 
 
 
