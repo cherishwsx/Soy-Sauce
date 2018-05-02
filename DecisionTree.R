@@ -149,7 +149,7 @@ beMember <- function(a, b) {
 }
 
 bestRule <- function(myData, classes, featureSpace) {
-  errors <- rep(x = -1, times = ncol(myData))
+  errors <- rep(x = Inf, times = ncol(myData))
   values <- rep(x = NA, times = ncol(myData))
   for (thfeat in 1:ncol(myData)) {
     if (length(table(myData[,thfeat]))!=1) {
@@ -159,6 +159,7 @@ bestRule <- function(myData, classes, featureSpace) {
     }
   }
   thisrule <- newRule(feature = colnames(myData)[which.min(errors)], judgement = "(<)=", value = values[which.min(errors)])
+  if (errors[which.min(errors)]==Inf) thisrule$feature <- NA
   inde <- 2
   return(thisrule)
 }
