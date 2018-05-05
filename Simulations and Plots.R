@@ -51,3 +51,17 @@ ggplot() + geom_line(data = Credit_result, aes(x = bags, y = error)) +
 
 ggplot() + geom_line(data = bCredit_result, aes(x = bags, y = error)) + 
   labs(title = "Trees Versus Error for balanced Credit", x = "number of trees", y = "error rate") + theme(plot.title = element_text(hjust = 0.5))
+
+b_result <- data.frame(obs = rep(NA, times = 28), error = rep(NA, times = 28))
+s <- sample(1:600, 300)
+j <- 1
+for (i in c(5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100,125,150,175,200,225,250,275,300)) {
+  Forest <- get_Forest(feature = bCredit[s,1:20], class = bCredit[s,21], NumofBag = 10, NumofObs = i)
+  rr <- randforePredict(ForestList = Forest, myData = bCredit[-s,])
+  b_result$obs[j] <- i 
+  b_result$error[j] <- 1-mean(rr==as.character(bCredit[-s,21]))
+  j <- j+1
+}
+
+ggplot() + geom_line(data = b_result, aes(x = obs, y = error)) + 
+  labs(title = "Observations Versus Error for balanced Credit", x = "number of observations", y = "error rate") + theme(plot.title = element_text(hjust = 0.5))
