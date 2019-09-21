@@ -1,3 +1,3 @@
 # Soy-Sauce
 
-This is my simple R package implementing Random Forest Algorithm collaborated with 2 other teammates.
+Here are the scripts for the Random Forest R package.
